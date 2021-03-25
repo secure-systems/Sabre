@@ -1,0 +1,12 @@
+Sabre works in two models:
+1. Sabre.v0: "Anonymous bulletin board". Direct comparison with Riposte. 
+		-> Like Riposte, Sabre.v0 can weed out malicious DPFs without evaluating them.
+		-> Unlike Riposte, Sabre.v0 uses \logn sized DPFs.
+		-> Although Express is not built in this model; if the Express audit protocol was used to build Riposte; Sabre.v0 has the advantage that, 		   Express has to evaluate the DPF to run their audit protocol.
+
+
+2. Sabre.v1: "Anonymous post-office". Direct comparison with Express. 
+	-> Sabre.v1 uses smaller DPFs compared to Express. 
+	-> The above property is acheived by using GMM queries to produce mailbox ids and having the clients prove that they know the mailbox id corresponding to the DPF, they just submitted.
+	-> Sabre.v1's audit protocol (to weed out malformed DPFs and weed out DPFs to random locations) scales logarithmically. Thus, Sabre.v1 is protected  against DoS attacks.
+	
