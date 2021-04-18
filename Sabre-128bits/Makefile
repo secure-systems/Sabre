@@ -43,7 +43,7 @@ BINDIR = bin
 
 all: directories $(BINDIR)/sabre
 
-$(BINDIR)/sabre: $(BINDIR) $(BINDIR)/gen_constants sabre.cpp lowmc/lowmc.h dpf++/dpf.h
+$(BINDIR)/sabre: $(BINDIR) $(BINDIR)/gen_constants sabre.cpp lowmc/lowmc.h dpf++/utils.h dpf++/dpf.h
 	$(CXX) $(CXXFLAGS) -o $(BINDIR)/sabre sabre.cpp $(LIBS) $(FLAGS)
 
 $(BINDIR)/gen_constants: $(BINDIR) lowmc/gen_constants.cpp
