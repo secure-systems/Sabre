@@ -1337,18 +1337,20 @@ int main(int argc, char * argv[])
   } // end  bitsliced_lowmc::matrices2[18]   (out of 18)
 }; // bitsliced_lowmc<128,19,32,256>::matrices2 
 
-	size_t count__ = 0;
+	size_t count__ = 0; 
 
   std::vector< std::tuple<int, int, int> > lut_recipe[rounds][NCOLS];
   
   uint64_t recipe_len[rounds][NCOLS];
   size_t total_len[rounds] = { 0 }; 
+  size_t total_len_cum[rounds] = { 0 };
   std::cout << "const size_t NCOLS = " << NCOLS << ";\n"; 
-  for(size_t round = 0; round < ROUNDS; ++round)
+  size_t cur_round = 2; 
+  std::cout << "// cur_round = " <<  cur_round << ";\n"; 
+  
+  for(size_t round = 0; round < rounds; ++round)
   {
-	
-
-    const uint8_t * matrix8 = reinterpret_cast<const uint8_t *>(&matrices[1]); 	 
+    const uint8_t * matrix8 = reinterpret_cast<const uint8_t *>(&matrices[round]); 	 
 
     for (int j = 0; j < NCOLS; ++j)
 	{		
@@ -1455,51 +1457,75 @@ int main(int argc, char * argv[])
  
 		for(size_t j = 0; j < NCOLS; ++j)
 		{
-		  recipe_len[round][j] = lut_recipe[rounds][j].size();	 
-		  total_len[round] += lut_recipe[rounds][j].size();
+		  recipe_len[round][j] = lut_recipe[round][j].size();	 
+		  total_len[round] += lut_recipe[round][j].size();
 		}
 	}
 	
 
-
+	for(size_t i = 0; i < ROUNDS; ++i) 
+	{
+		for(size_t j = 0; j < i; ++j)
+		{
+			total_len_cum[i] += total_len[j];
+		}
+	}
 	
 	
 	std::cout << "template<>\n";
 	std::cout << "const size_t bitsliced_lowmc<" << block_len << "," << rounds
-	          <<     "," << sboxes << "," << ndpfs << ">::recipe_len[NCOLS] = {"; 
+	          <<     "," << sboxes << "," << ndpfs << ">::recipe_len[] = {"; 
 	
-	for(size_t j = 0; j < NCOLS; ++j)
-	{	 
-		 //total_len += lut_recipe[j].size();
-
-		 std::cout << lut_recipe[1][j].size();
-
-		 if(j < NCOLS - 1) std::cout << ", ";
- 
+	for(size_t round = 0; round < ROUNDS; ++round)
+	{
+		for(size_t j = 0; j < NCOLS; ++j)
+		{	 
+			 std::cout << lut_recipe[round][j].size();
+	 		 std::cout << ", ";
+		}
 	}
 
  
 
    std::cout << "};\n";
- 	
+ 	 
    size_t count = 0; 	
  
+  
+
+
    std::cout << "template<>\n";
    std::cout << "const std::tuple<int, int, int> bitsliced_lowmc<" << block_len << "," << rounds
 	          <<     "," << sboxes << "," << ndpfs << ">::lut_recipe_[] = {";
+   
+  for(size_t round = 0; round < ROUNDS; ++round)
+  {
    for(size_t cols = 0; cols < NCOLS; ++cols) 
    {
-     for(size_t i = 0; i < lut_recipe[1][cols].size(); ++i)
+     for(size_t i = 0; i < lut_recipe[round][cols].size(); ++i)
 	  {
-	  	std::cout << "std::make_tuple(" << std::get<0>(lut_recipe[1][cols][i]) << " , " << 
-	  							std::get<1>(lut_recipe[1][cols][i]) << ", " << std::get<2>(lut_recipe[1][cols][i])  <<    ")";
-	  	if(count < total_len[1] - 1) std::cout << ", ";
+	  	std::cout << "std::make_tuple(" << std::get<0>(lut_recipe[round][cols][i]) << " , " << 
+	  							std::get<1>(lut_recipe[round][cols][i]) << ", " << std::get<2>(lut_recipe[round][cols][i])  <<    ")";
+	  //	if(count < total_len[round] - 1) 
+	  	std::cout << ", ";
 	  	++count; 
 	   }
     }
+  } 
+ 
+    std::cout << "};\n\n";
 
-    std::cout << "};\n";
 
+   std::cout << "template<>\n";
+   std::cout << "const size_t bitsliced_lowmc<" << block_len << "," << rounds
+	          <<     "," << sboxes << "," << ndpfs << ">::round_recipes[] =  {";  
+
+   	for (size_t i = 0; i < ROUNDS; ++i)
+   	{ 
+   		std::cout << total_len_cum[i] << ", ";
+   	}
+
+ 	 std::cout << "};\n\n";
 
 
 	std::cout << "} // namespace lowmc\n\n"
