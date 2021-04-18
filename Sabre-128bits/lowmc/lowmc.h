@@ -42,7 +42,8 @@
 #include "../block.h"
 #include "randomness.h"
 #include "streams.h"
-
+#include "transposition.h"
+#include "recipes.h"
 namespace lowmc
 {
 
@@ -123,16 +124,7 @@ class lowmc
 			auto mat = reinterpret_cast<const block_t *>(matrices[i]);
 			c = mul(mat, c , round_constants[i]);
 		} 
-
-		    // block_t c = msg ^ round_constants[0];
-		    // for (unsigned r = 1; r <= rounds; ++r)
-		    // {  
-		    //    c =  substitute(c);
-		     
-		    //    //std::vector<block_t> lin = (lin_mat[r-1]);
-		    //    const block_t * lin = reinterpret_cast<const block_t*>(matrices[r-1]);
-		    //    c =  mul(lin, c, round_constants[r]);
-		    // }
+ 
 		return c;
 	} // encrypt
 
@@ -143,71 +135,12 @@ class lowmc
  *  @{
  */
 
-	inline auto encrypt2_p0p1(const block_t & share0, randomness & rand0,
-		instream * p1in, instream * p2, outstream * p1out, bool p) const
-	{
-		auto c0 = share0;
-		for (size_t i = 0; i < rounds; ++i)
-		{
-			block_t blinded_c1, blind0, gamma;
-			rand0 >> blind0;           //< sample next blinding factor
-			*p1out << (c0 ^ blind0);   //< blind own share; send to other party
-			*p1in >> blinded_c1;       //< get blinded share from other party
-			*p2 >> gamma;              //< get cancellation term from P2
-
-			auto mat = reinterpret_cast<const block_t *>(matrices[i]);
-			c0 = substitute2_p0p1(c0, blind0, blinded_c1, gamma);
-			c0 = mul(mat, c0, p ? round_constants[i] : 0);
-		}
-		return c0;
-	} // encrypt2_p0p1
-
-	inline void encrypt2_p2(outstream * p0, outstream * p1, randomness & rand0,
-		randomness & rand1, randomness & rand2) const
-	{
-		for (size_t i = 0; i < rounds; ++i)
-		{
-			auto [gamma0, gamma1] = substitute2_p2(rand0, rand1, rand2);
-			*p0 << gamma0;             //< send next cancellation term to P0
-			*p1 << gamma1;             //< send next cancellation term to P1
-		}
-	} // encrypt2_p2
-	inline auto encrypt2_p2_(outstream * p0, outstream * p1, randomness && rand0,
-		randomness && rand1, randomness & rand2) const
-	{
-		return encrypt2_p2(p0, p1, rand0, rand1, rand2);
-	}
+ 
 
 /** @} */ // end of group2
+ 
 
-	inline auto encrypt3_proof(const block_t & share0, const block_t & share1,
-		randomness & rand0, randomness & rand1, randomness & rand2,
-		rewindstream * p01, rewindstream * p10, rewindstream * p20, rewindstream * p21) const
-	{
-		std::thread t2(&lowmc<block_len,rounds,sboxes>::encrypt2_p2_, this,
-			p20, p21, rand0.clone(), rand1.clone(), std::ref(rand2));
-
-		auto t0 = std::async(std::launch::async,
-			&lowmc<block_len,rounds,sboxes>::encrypt2_p0p1, this,
-			std::ref(share0), std::ref(rand0), p10, p20, p01, 0);
-
-		auto t1 = std::async(std::launch::async,
-			&lowmc<block_len,rounds,sboxes>::encrypt2_p0p1, this,
-			std::ref(share1), std::ref(rand1), p01, p21, p10, 1);
-		
-		t2.join();
-		return std::make_pair(t0.get(), t1.get());
-	} // encrypt3_proof
-
-	inline auto encrypt3_verify(const block_t & share0, const __m256i & hash,
-		rewindstream * p10, rewindstream * p20, randomness & rand0, bool p) const
-	{
-		basicstream p01;
-		p10->rewind();
-		p20->rewind();
-		(void)encrypt2_p0p1(share0, rand0, p10, p20, &p01, p);
-		return block<__m256i>(p01.sha256_digest()) == block<__m256i>(hash);
-	} // encrypt3_verify
+ 
 
   //private:
 	/// mask for the highest-order bit in each s-box
@@ -245,23 +178,7 @@ class lowmc
 		return msg;
 	} // substitute
 
-	inline auto & substitute2_p0p1(block_t & share0, const block_t & blind0,
-		const block_t & blinded_share1, const block_t & gamma0) const
-	{
-		auto blinded_msg = share0 ^ blinded_share1;
-
-		auto srli1 = (share0 >> 1) & maskbc;
-		auto srli2 = (share0 >> 2) & maskc;
-
-		auto tmp = (blinded_msg & srli1) ^ (blind0 & (blinded_share1 >> 1));
-
-		auto bc = (tmp << 2) & maska;
-		auto ac = (((blinded_msg & srli2) ^ (blind0 & (blinded_share1 >> 2))) << 1) & maskb;
-		auto ab = (tmp >> 1) & maskc;
-
-		share0 ^= (bc | ac | ab) ^ srli1 ^ srli2 ^ gamma0;
-		return share0;
-	} // substitute2_p0p1
+ 
 
 	inline auto substitute2_p2(randomness & rand0, randomness & rand1,
 		randomness & rand2) const
@@ -410,13 +327,9 @@ __m128i _mm_set1_epi8_xor(__m128i message, bool x)
 		 for (size_t i = 0; i < rounds; ++i)
 		 {
 
-
-
-		   
  
-
 		   c2 = substitute(c2);
-		   const uint8_t * mat = reinterpret_cast<const uint8_t *>(matrices[i]);
+		   const uint8_t * mat = reinterpret_cast<const uint8_t *>(&matrices[i]);
 		   c2 = mmul2(i, mat,  c2, round_constants[i]);
 
 		   // c = substitute(c);
@@ -430,149 +343,13 @@ __m128i _mm_set1_epi8_xor(__m128i message, bool x)
 		   // }
 
 		 }
-
-		    // for (int i = 0; i < 128; ++i) c[i] = _mm_set1_epi8_xor(msg[i].mX, round_constants[0].bits[i]);// (roundkeysXORconstants_[0].bits[i] ? -1 : 0);
-    
-		    // for (unsigned r = 1; r <= rounds; ++r)
-		    // {  
-		    //  // c = substitute(c);  
-		    //   const uint64_t * M = matrices[r-1];// reinterpret_cast<const uint64_t *>(transposeLinMatrices[r-1].data());
-		    //   c = mmul(M, substitute(c), round_constants[r]);
-		       
-		    // } 
+ 
 
 		return c2;
 	} // encrypt
 
-
-	/// Plain-ol' ECB-mode encryption of a bitsliced batch of 1-block message
-    // inline void __encrypt(sliceblock_t & msg) const
-    // {
-    //     for (size_t i = 0; i < rounds; ++i)
-    //     {
-    //         msg = mmul(matrices[i], substitute(msg), round_constants[i]);
-    //     }
-    // } // __encrypt
-
-    // /// Plain-ol' ECB-mode encryption of a bitsliced batch of 1-block message
-    // inline auto encrypt(const sliceblock_t & msg) const
-    // {
-    //     auto c = msg;
-    //     __encrypt(c);
-    //     return c;
-    // } // encrypt
-
-	inline auto encrypt2_p0p1(const sliceblock_t & share0, randomness & rand0,
-		instream * p1in, outstream * p2, outstream * p1out, bool p) const
-	{
-		auto c0 = share0;
-		for (size_t i = 0; i < rounds; ++i)
-		{
-			sboxslices_t blinded_c1, blind0, gamma;
-			rand0 >> blind0;
-			*p1out << sliced_xor(c0, blind0);
-			*p1in >> blinded_c1;
-			*p2 >> gamma;
-			c0 = substitute2_p0p1(c0, blind0, blinded_c1, gamma);
-			c0 = mmul(matrices[i], c0, p ? round_constants[i] : 0);
-		}
-		return c0;
-	} // encrypt2_p0p1
-
-	inline auto encrypt2_p2(outstream * p0, outstream * p1, randomness & rand0,
-		randomness & rand1, randomness & rand2) const
-	{
-		for (size_t i = 0; i < rounds; ++i)
-		{
-			auto [gamma0, gamma1] = substitute2_p2(rand0, rand1, rand2);
-			p0 << gamma0;
-			p1 << gamma1;
-		}
-	} // encrypt2_p2
-
-	inline auto encrypt3_proof(const sliceblock_t & share0,
-		const sliceblock_t & share1, randomness & rand0, randomness & rand1,
-		randomness & rand2, rewindstream * p01, rewindstream * p10, rewindstream * p20,
-		rewindstream * p21) const
-	{
-		std::thread t2(&bitsliced_lowmc<block_len,rounds,sboxes>::encrypt2_p2_, this,
-			p20, p21, rand0.clone(), rand1.clone(), std::ref(rand2));
-
-		auto t0 = std::async(std::launch::async, &bitsliced_lowmc<block_len,rounds,sboxes>::encrypt2_p0p1, this,
-			std::ref(share0), std::ref(rand0), p10, p20, p01, 0);
-
-		auto t1 = std::async(std::launch::async, &bitsliced_lowmc<block_len,rounds,sboxes>::encrypt2_p0p1, this,
-			std::ref(share1), std::ref(rand1), p01, p21, p10, 1);
-
-		t2.join();
-		return std::make_tuple(t0.get(), t1.get());
-	} // encrypt3_proof
-
-	inline auto encrypt3_verify(const sliceblock_t & share0, const __m256i & hash,
-		rewindstream * p10, rewindstream * p20, randomness & rand0, bool p) const
-	{
-		basicstream p01;
-		p10->rewind();
-		p20->rewind();
-		(void)encrypt2_p0p1(share0, rand0, p10, p20, &p01, p);
-		return block<__m256i>(p01.sha256_digest()) == block<__m256i>(hash);
-	} // encrypt3_verify
-
-
-template <int imm8 = 8>
-inline static __m256i _mm256_gatherbytes_epi8(const __m256i * base_addr)
-{
-    return _mm256_setr_epi8(
-        _mm256_extract_epi8(base_addr[ 0], imm8),
-        _mm256_extract_epi8(base_addr[ 1], imm8),
-        _mm256_extract_epi8(base_addr[ 2], imm8),
-        _mm256_extract_epi8(base_addr[ 3], imm8),
-        _mm256_extract_epi8(base_addr[ 4], imm8),
-        _mm256_extract_epi8(base_addr[ 5], imm8),
-        _mm256_extract_epi8(base_addr[ 6], imm8),
-        _mm256_extract_epi8(base_addr[ 7], imm8),
-        _mm256_extract_epi8(base_addr[ 8], imm8),
-        _mm256_extract_epi8(base_addr[ 9], imm8),
-        _mm256_extract_epi8(base_addr[10], imm8),
-        _mm256_extract_epi8(base_addr[11], imm8),
-        _mm256_extract_epi8(base_addr[12], imm8),
-        _mm256_extract_epi8(base_addr[13], imm8),
-        _mm256_extract_epi8(base_addr[14], imm8),
-        _mm256_extract_epi8(base_addr[15], imm8),
-        _mm256_extract_epi8(base_addr[16], imm8),
-        _mm256_extract_epi8(base_addr[17], imm8),
-        _mm256_extract_epi8(base_addr[18], imm8),
-        _mm256_extract_epi8(base_addr[19], imm8),
-        _mm256_extract_epi8(base_addr[20], imm8),
-        _mm256_extract_epi8(base_addr[21], imm8),
-        _mm256_extract_epi8(base_addr[22], imm8),
-        _mm256_extract_epi8(base_addr[23], imm8),
-        _mm256_extract_epi8(base_addr[24], imm8),
-        _mm256_extract_epi8(base_addr[25], imm8),
-        _mm256_extract_epi8(base_addr[26], imm8),
-        _mm256_extract_epi8(base_addr[27], imm8),
-        _mm256_extract_epi8(base_addr[28], imm8),
-        _mm256_extract_epi8(base_addr[29], imm8),
-        _mm256_extract_epi8(base_addr[30], imm8),
-        _mm256_extract_epi8(base_addr[31], imm8)
-    );
-}
-
-
-/// transpose a 32-by-8 matrix of bits
-/// the result is an std::tuple consisting of eight 32-bit rows
-inline static auto transpose32x8(const __m256i & x)
-{
-return std::make_tuple(_mm256_movemask_epi8(x),
-_mm256_movemask_epi8(_mm256_slli_epi64(x, 1)),
-_mm256_movemask_epi8(_mm256_slli_epi64(x, 2)),
-_mm256_movemask_epi8(_mm256_slli_epi64(x, 3)),
-_mm256_movemask_epi8(_mm256_slli_epi64(x, 4)),
-_mm256_movemask_epi8(_mm256_slli_epi64(x, 5)),
-_mm256_movemask_epi8(_mm256_slli_epi64(x, 6)),
-_mm256_movemask_epi8(_mm256_slli_epi64(x, 7))
-);
-}
+ 
+  
 
 
 
@@ -590,26 +367,32 @@ _mm256_movemask_epi8(_mm256_slli_epi64(x, 7))
 		    lut[0b01000000] =  rows[6];
 		    lut[0b10000000] =  rows[7];
 
-	 		size_t start = (i > 0) ? recipe_len[i-1] : 0, end = start + recipe_len[i];
+	 		//size_t start = (i > 0) ? round_recipes[i-1] : 0, end = start + round_recipes[i];
+		   
+		   	 size_t start = (i > 0) ? recipe_len[i-1] : 0, end = start + recipe_len[i];
 		    
+
+		    size_t offset = 16 * round;
 		    if(i == 0)
 		    {
-		    	start = 0;
-		    	end = recipe_len[0]; 
+		    	start = round_recipes[round];// (round > 0) ? round_recipes[round-1] : 0;
+
+		    	end = start + recipe_len[offset]; 
 		    }
 
 		    if(i > 0)
 		    {
-		    	start = 0;
-
+		    	//start = 0;
+		    	 start = round_recipes[round];//start = (round > 0) ? round_recipes[round-1] : 0, end = start + round_recipes[i];
 	 	    	for(size_t t = 0; t < i; ++t)
 		    	{
-		    		start += recipe_len[t];
+		    		start += recipe_len[t + offset];
 		    	}
 
-		    	end = start + recipe_len[i];
+		    	end = start + recipe_len[i + offset];
 		    }
-  
+
+		   // std::cout << "--> " << end - start << " = " << start << " - " << end << std::endl;
 		    for(size_t j = start; j < end; ++j)
 		    {
 		     	auto [dst, src1, src2] = lut_recipe_[j];
@@ -636,7 +419,7 @@ _mm256_movemask_epi8(_mm256_slli_epi64(x, 7))
 			}
 		}	
  
- 		 //printf("result[2] = %llu %llu %llu %llu \n\n\n",result[0].mX[0], result[0].mX[1], result[0].mX[2], result[0].mX[3]);
+ 	 
 		return result;
 	} // mmul2
 
@@ -671,7 +454,8 @@ _mm256_movemask_epi8(_mm256_slli_epi64(x, 7))
 
  // private:
   	static const std::tuple<int, int, int> lut_recipe_[]; 
-  	static const size_t recipe_len[16];
+  	static const size_t recipe_len[];
+  	static const size_t round_recipes[];
 	static const uint64_t matrices[rounds][(block_len/64) * block_len];
 	static const block_t * round_constants;
 
@@ -690,53 +474,7 @@ _mm256_movemask_epi8(_mm256_slli_epi64(x, 7))
 		return msg;
 	} // substitute
 
-	inline auto & substitute2_p0p1(sliceblock_t & share0,
-		const sliceblock_t & blind0, const sliceblock_t & blinded_share1,
-		const sliceblock_t & gamma0) const
-	{
-		for (size_t i = 0, j = 0; i < sboxes; ++i, j+=3)
-		{
-			auto c = ((share0[j+2] ^ blinded_share1[j+2]) & share0[j+1])
-			    ^ (blind0[j+2] & blinded_share1[j+1]) ^ share0[j+1] ^ share0[j+2];
-			auto b = ((share0[j+0] ^ blinded_share1[j+0]) & share0[j+2])
-			    ^ (blind0[j+0] & blinded_share1[j+2]) ^ share0[j+2];
-			auto a = ((share0[j+1] ^ blinded_share1[j+1]) & share0[j+0])
-			    ^ (blind0[j+1] & blinded_share1[j+0]);
-
-			share0[j+0] ^= c ^ gamma0[j+0];
-			share0[j+1] ^= b ^ gamma0[j+1];
-			share0[j+2] ^= a ^ gamma0[j+2];
-		}
-		return share0;
-	} // substitute2_p0p1
-
-	inline auto & substitute2_p2(randomness & rand0, randomness & rand1,
-		randomness & rand2) const
-	{
-		sboxslices_t gamma0, gamma1;
-		for (size_t i = 0, j = 0; i < sboxes; ++i, j+=3)
-		{
-			std::array<slicerow_t, 3> blind0, blind1, blind2;
-			rand0 >> blind0;
-			rand1 >> blind1;
-			rand2 >> blind2;
-
-			gamma0[j+0] = (blind0[1] & blind1[2]) ^ blind2[0];
-			gamma1[j+0] = (blind0[2] & blind1[1]) ^ blind2[0];
-
-			gamma0[j+1] = (blind0[2] & blind1[0]) ^ blind2[1];
-			gamma1[j+1] = (blind0[0] & blind1[2]) ^ blind2[1];
-
-			gamma0[j+2] = (blind0[0] & blind1[1]) ^ blind2[2];
-			gamma1[j+2] = (blind0[1] & blind1[0]) ^ blind2[2];
-		}
-		return std::make_pair(gamma0, gamma1);
-	} // substitute2_p2
- 
-
-
- 
- 
+	  
 
 
 	void populate_lut(const size_t i, const sliceblock_t & matrix,

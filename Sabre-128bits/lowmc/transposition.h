@@ -31,8 +31,79 @@
 namespace lowmc
 {
 
-namespace streams
+namespace dpf
 {
+
+inline auto get_bytes_from_bits(const __m256i & t, int which)
+{
+    static const unsigned char mask1a[32] = {
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x01, 0x01, 0x01, 0x01,
+        0x01, 0x01, 0x01, 0x01,
+        0x02, 0x02, 0x02, 0x02,
+        0x02, 0x02, 0x02, 0x02,
+        0x03, 0x03, 0x03, 0x03,
+        0x03, 0x03, 0x03, 0x03
+    };
+
+    static const unsigned char mask2a[32] = {
+        0x01, 0x02, 0x04, 0x08,
+        0x10, 0x20, 0x40, 0x80,
+        0x01, 0x02, 0x04, 0x08,
+        0x10, 0x20, 0x40, 0x80,
+        0x01, 0x02, 0x04, 0x08,
+        0x10, 0x20, 0x40, 0x80,
+        0x01, 0x02, 0x04, 0x08,
+        0x10, 0x20, 0x40, 0x80,
+    };
+
+    __m256i mask2 = _mm256_loadu_si256((__m256i*)mask2a);
+    __m256i mask1 = _mm256_loadu_si256((__m256i*)mask1a);
+
+    auto y = _mm256_permutevar8x32_epi32(t, _mm256_set1_epi32(which));
+    auto z = _mm256_shuffle_epi8(y, mask1);
+    return _mm256_and_si256(z, mask2);
+}
+
+template <int imm8 = 8>
+inline static __m256i _mm256_gatherbytes_epi8(const __m256i * base_addr)
+{
+    return _mm256_setr_epi8(
+        _mm256_extract_epi8(base_addr[ 0], imm8),
+        _mm256_extract_epi8(base_addr[ 1], imm8),
+        _mm256_extract_epi8(base_addr[ 2], imm8),
+        _mm256_extract_epi8(base_addr[ 3], imm8),
+        _mm256_extract_epi8(base_addr[ 4], imm8),
+        _mm256_extract_epi8(base_addr[ 5], imm8),
+        _mm256_extract_epi8(base_addr[ 6], imm8),
+        _mm256_extract_epi8(base_addr[ 7], imm8),
+        _mm256_extract_epi8(base_addr[ 8], imm8),
+        _mm256_extract_epi8(base_addr[ 9], imm8),
+        _mm256_extract_epi8(base_addr[10], imm8),
+        _mm256_extract_epi8(base_addr[11], imm8),
+        _mm256_extract_epi8(base_addr[12], imm8),
+        _mm256_extract_epi8(base_addr[13], imm8),
+        _mm256_extract_epi8(base_addr[14], imm8),
+        _mm256_extract_epi8(base_addr[15], imm8),
+        _mm256_extract_epi8(base_addr[16], imm8),
+        _mm256_extract_epi8(base_addr[17], imm8),
+        _mm256_extract_epi8(base_addr[18], imm8),
+        _mm256_extract_epi8(base_addr[19], imm8),
+        _mm256_extract_epi8(base_addr[20], imm8),
+        _mm256_extract_epi8(base_addr[21], imm8),
+        _mm256_extract_epi8(base_addr[22], imm8),
+        _mm256_extract_epi8(base_addr[23], imm8),
+        _mm256_extract_epi8(base_addr[24], imm8),
+        _mm256_extract_epi8(base_addr[25], imm8),
+        _mm256_extract_epi8(base_addr[26], imm8),
+        _mm256_extract_epi8(base_addr[27], imm8),
+        _mm256_extract_epi8(base_addr[28], imm8),
+        _mm256_extract_epi8(base_addr[29], imm8),
+        _mm256_extract_epi8(base_addr[30], imm8),
+        _mm256_extract_epi8(base_addr[31], imm8)
+    );
+}
 
 /// transpose a 32-by-8 matrix of bits
 /// the result is an std::tuple consisting of eight 32-bit rows
@@ -120,7 +191,7 @@ inline static auto transpose(const std::array<__m128i, slices> & arr)
 }
 
 
-} // namespace streams
+} // namespace dpf
 
 } // namesapce lowmc
 
